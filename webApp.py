@@ -84,10 +84,11 @@ class SlowControlGUI(flx.PyComponent):
         if (ret!=0):
             print('Please check led pulser connection')
 
-        with flx.HBox(flex=0, spacing=10):
-            self.but1 = flx.Button(text='Led Pulser',css_class="border-black",flex=1)
-            self.but2 = flx.Button(text='HV',css_class="border-black",flex=1)
-            self.but3 = flx.Button(text='VSEL',css_class="border-black",flex=1)
+#        with flx.HBox(flex=0, spacing=10):
+        with flx.PinboardLayout():
+            self.but1 = flx.Button(text='Led Pulser',css_class="border-black",style='left:10px; top:10px; width:180px;height:100px;')
+            self.but2 = flx.Button(text='HV',css_class="border-black",style='left:200px; top:10px; width:150px;height:100px;')
+            self.but3 = flx.Button(text='VSEL',css_class="border-black",style='left:360px; top:10px; width:100px;height:100px;')
 
 #            self.label = flx.Label(text='', flex=1)  # take all remaining space
 
@@ -145,16 +146,16 @@ class SlowControlGUI(flx.PyComponent):
     def update_buttons(self, *events):
         if (self.hv==1):
             self.but2.set_text('HV ON')
-            self.but2.apply_style('background:green;')
+            self.but2.apply_style('background:red;')
         if (self.hv==0):
             self.but2.set_text('HV OFF')
-            self.but2.apply_style('background:red;')
+            self.but2.apply_style('background:yellow;')
         if (self.led==1):
             self.but1.set_text('LED ON')
-            self.but1.apply_style('background:green;')
+            self.but1.apply_style('background:red;')
         if (self.led==0):
             self.but1.set_text('LED OFF')
-            self.but1.apply_style('background:red;')
+            self.but1.apply_style('background:yellow;')
         if (self.vsel==1):
             self.but3.set_text('V1')
         if (self.vsel==0):
