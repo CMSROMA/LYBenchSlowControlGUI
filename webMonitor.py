@@ -20,6 +20,7 @@ with open(BASE_DIR + '/static/js/script.js') as f:
 flx.assets.associate_asset(__name__, 'style.css', style)
 flx.assets.associate_asset(__name__, 'script.js', script)
 
+
 class LedPulser(flx.PyComponent):
     def ledSwitch(self, status):
         ret=0
@@ -30,6 +31,8 @@ class LedPulser(flx.PyComponent):
             ret+=os.system("echo 'C1:OUTP OFF'>/dev/usbtmc0")
             ret+=os.system("echo 'C2:OUTP OFF'>/dev/usbtmc0")
         return ret
+
+import time
 
 class SerialConnection(flx.PyComponent):
     def init(self):
@@ -42,6 +45,13 @@ class SerialConnection(flx.PyComponent):
             reply += x.strip()
             if reply == response:
                 return reply
+
+    def returnAnswer(self):
+        reply = ''
+        while True:
+            x = self.con.readline().decode('UTF-8')
+            reply += x.strip()
+            return reply
 
     def sendCommand(self,command):
         if (command.lower()) == 'i' :
@@ -56,9 +66,17 @@ class SerialConnection(flx.PyComponent):
         elif command == '0':
             self.con.write("0".encode())
             return self.waitAnswer('V0')
+        elif (command.lower()) == 't':
+            self.con.write("t".encode())
+            time.sleep(1)
+            return self.returnAnswer()
         else:
             return 'Command not supported'
-    
+
+from datetime import datetime
+import asyncio
+import logging
+
 class SlowControlGUI(flx.PyComponent):
     led = flx.IntProp(0, settable=True)
     hv = flx.IntProp(0, settable=True)
@@ -70,7 +88,7 @@ class SlowControlGUI(flx.PyComponent):
         super().init()
         self._mutate_sercon(SerialConnection())
         self._mutate_ledcon(LedPulser())
-
+        self.t0 = datetime.now()
         #Always start in inhbit mode
         reply=self.sercon.sendCommand('i')
         if (reply!='INH'):
@@ -85,13 +103,27 @@ class SlowControlGUI(flx.PyComponent):
             print('Please check led pulser connection')
 
 #        with flx.HBox(flex=0, spacing=10):
+
+
         with flx.PinboardLayout():
+            self.tempText = flx.Label(text='T: XX.XX H: YY.YY',style='left:10px; top:120px; width:300px;height:20px;')
             self.but1 = flx.Button(text='Led Pulser',css_class="border-black",style='left:10px; top:10px; width:180px;height:100px;')
             self.but2 = flx.Button(text='HV',css_class="border-black",style='left:200px; top:10px; width:150px;height:100px;')
             self.but3 = flx.Button(text='VSEL',css_class="border-black",style='left:360px; top:10px; width:100px;height:100px;')
-
 #            self.label = flx.Label(text='', flex=1)  # take all remaining space
 
+        self.refreshTemperature()
+
+    def refreshTemperature(self):
+        reply=self.sercon.sendCommand('t')
+        self.tempText.set_text(reply)
+
+        t1 = datetime.now()
+        tdiff = t1 - self.t0
+        if (tdiff.total_seconds()>5):
+            self.t0 = t1
+            logging.info(reply)
+        asyncio.get_event_loop().call_later(1, self.refreshTemperature)
 
     @flx.action
     def hv_switch(self):
@@ -140,8 +172,7 @@ class SlowControlGUI(flx.PyComponent):
 
 #    @flx.reaction
 #    def update_label(self, *events):
-#        self.label.set_text('LED is ' + str(self.led) + ' HV is ' +  str(self.hv) + ' VSEL is ' + str(self.vsel))
-
+ 
     @flx.reaction
     def update_buttons(self, *events):
         if (self.hv==1):
@@ -161,7 +192,15 @@ class SlowControlGUI(flx.PyComponent):
         if (self.vsel==0):
             self.but3.set_text('V0')
 
-flx.config.port = 8888
+from optparse import OptionParser
+parser = OptionParser()
+parser.add_option("-l","--log")
+parser.add_option("-p","--port")
+(options,args)=parser.parse_args()
+
+logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %H:%M:%S',filename=options.log,level=logging.DEBUG)
+flx.config.port = options.port
+
 app = flx.App(SlowControlGUI)
 #app.launch('browser')  # show it now in a browser
 app.serve('')
