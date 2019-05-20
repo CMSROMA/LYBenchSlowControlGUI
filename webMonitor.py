@@ -2,6 +2,10 @@ from flexx import flx
 import os
 import serial
 
+#needed for thingspeak
+
+thingspeak_key='B9JGO2DYZM4ONN38'
+
 #class Main(flx.PyComponent):
 #    def init(self):
 #        self.sercon = SerialConnection()
@@ -36,8 +40,8 @@ import time
 
 class SerialConnection(flx.PyComponent):
     def init(self,port):
-        self.con = serial.Serial(port)
-
+        self.con = serial.Serial(port,115200)
+        self.con.timeout = 5
     def waitAnswer(self,response):
         reply = ''
         while True:
@@ -75,7 +79,8 @@ class SerialConnection(flx.PyComponent):
 
 class SerialConnectionChiller(flx.PyComponent):
     def init(self,port):
-        self.con = serial.Serial(port)
+        self.con = serial.Serial(port,9600)
+        self.con.timeout = 5
 
     def waitAnswer(self,response):
         reply = ''
@@ -112,22 +117,70 @@ class SerialConnectionChiller(flx.PyComponent):
         else:
             return 'Command not supported'
 
+class SerialConnectionSensirion(flx.PyComponent):
+    def init(self,port):
+        self.con = serial.Serial(port,9600)
+        self.con.timeout = 5
+
+    def waitAnswer(self,response):
+        reply = ''
+        while True:
+            x = self.con.readline().decode('UTF-8')
+            reply += x.strip()
+            if reply == response:
+                return reply
+
+    def returnAnswer(self):
+        reply = ''
+        while True:
+            x = self.con.readline().decode('UTF-8')
+            reply += x.strip()
+            return reply
+
+    def sendCommand(self,command):
+        if (command.lower()) == 't' :
+            self.con.write('t'.encode())
+            time.sleep(0.5)
+            return self.returnAnswer()
+        else:
+            return 'Command not supported'
+
 from datetime import datetime
 import asyncio
 import logging
+
+import requests
+
+def logThingSpeak(message):
+    try:
+        conn = requests.post("http://api.thingspeak.com/update",data=message)
+    except:
+        print("Thingspeak connection failed")
 
 class SlowControlGUI(flx.PyComponent):
     led = flx.IntProp(0, settable=True)
     hv = flx.IntProp(0, settable=True)
     vsel = flx.IntProp(0, settable=True)
+
+    chillerStat = flx.IntProp(0, settable=True)
+    tempchiller = flx.FloatProp(0, settable=True)
+    tempbench = flx.FloatProp(0, settable=True)
+    tempext = flx.FloatProp(0, settable=True)
+    humbench = flx.FloatProp(0, settable=True)
+    humext = flx.FloatProp(0, settable=True)
+
     sercon =  flx.ComponentProp()
     serconChiller =  flx.ComponentProp()
+    serconSensirion =  flx.ComponentProp()
     ledcon =  flx.ComponentProp()
+
+    initialised = 0
 
     def init(self):
         super().init()
-        self._mutate_sercon(SerialConnection('/dev/ttyACM0'))
+        self._mutate_sercon(SerialConnection('/dev/ttyACM1'))
         self._mutate_serconChiller(SerialConnectionChiller('/dev/ttyUSB0'))
+        self._mutate_serconSensirion(SerialConnectionSensirion('/dev/ttyACM0'))
         self._mutate_ledcon(LedPulser())
         self.t0 = datetime.now()
         #Always start in inhbit mode
@@ -145,10 +198,10 @@ class SlowControlGUI(flx.PyComponent):
 
 #        with flx.HBox(flex=0, spacing=10):
 
-
         with flx.PinboardLayout():
             self.tempText = flx.Label(text='T: XX.XX H: YY.YY',style='left:10px; top:120px; width:300px;height:20px;')
-            self.chillerText = flx.Label(text='CHILLER TBATH:XXX.XX TSET:YYY.YY PUMP:ZZ',style='left:10px; top:140px; width:400px;height:20px;')
+            self.sensirionText = flx.Label(text='T_EXT:XXX.XX H_EXT:YYY.YY DEW_EXT:ZZZ.ZZ',style='left:10px; top:140px; width:400px;height:20px;')
+            self.chillerText = flx.Label(text='CHILLER TBATH:XXX.XX TSET:YYY.YY PUMP:ZZ',style='left:10px; top:160px; width:400px;height:20px;')
             self.but1 = flx.Button(text='Led Pulser',css_class="border-black",style='left:10px; top:10px; width:180px;height:100px;')
             self.but2 = flx.Button(text='HV',css_class="border-black",style='left:200px; top:10px; width:150px;height:100px;')
             self.but3 = flx.Button(text='VSEL',css_class="border-black",style='left:360px; top:10px; width:100px;height:100px;')
@@ -157,29 +210,66 @@ class SlowControlGUI(flx.PyComponent):
 
         self.refreshTemperature()
         self.refreshChiller()
+        self.refreshSensirion()
+#upload to things speak (every 60s)
+        self.refreshThingSpeak()
 
+        self.initialised=1
+
+    @flx.action
     def refreshTemperature(self):
-        reply=self.sercon.sendCommand('t')
-        self.tempText.set_text(reply)
-        logging.info(reply)
+        if (self.initialised != 0):
+            reply=self.sercon.sendCommand('t')
+            self.tempText.set_text(reply)
+            logging.info(reply)
+            temp=reply.split(' ')[1]
+            self._mutate_tempbench(temp)
+            hum=reply.split(' ')[3]
+            self._mutate_humbench(hum)
         asyncio.get_event_loop().call_later(5, self.refreshTemperature)
 
+    @flx.action
+    def refreshSensirion(self):
+        if (self.initialised != 0):
+            reply=self.serconSensirion.sendCommand('t')
+            if (len(reply.split(' ')) == 10):
+                temp=reply.split(' ')[1]
+                self._mutate_tempext(temp)
+                hum=reply.split(' ')[7]
+                self._mutate_humext(hum)
+                dew=reply.split(' ')[9]
+                self.sensirionText.set_text('T_EXT:'+temp+' H_EXT:'+hum+' DEW_EXT:'+dew)
+                logging.info('T_EXT:'+temp+' H_EXT:'+hum+' DEW_EXT:'+dew)
+
+        asyncio.get_event_loop().call_later(6, self.refreshSensirion)
+
+    @flx.action
     def refreshChiller(self):
-        tbath=self.serconChiller.sendCommand('t')
-        tset=self.serconChiller.sendCommand('g')
-        pump=self.serconChiller.sendCommand('p')
-        status=self.serconChiller.sendCommand('s')
-        self.chillerText.set_text('CHILLER TBATH:'+tbath+' TSET:'+tset+' PUMP:'+pump)
+        if (self.initialised != 0):
+            tbath=self.serconChiller.sendCommand('t')
+            tset=self.serconChiller.sendCommand('g')
+            pump=self.serconChiller.sendCommand('p')
+            status=self.serconChiller.sendCommand('s')
+            self.chillerText.set_text('CHILLER TBATH:'+tbath+' TSET:'+tset+' PUMP:'+pump)
 
-        if (status == '0' ):
-            self.chillerStatus.set_text('COOLING OK')
-            self.chillerStatus.apply_style('background:green;')
-        else:
-            self.chillerStatus.set_text('COOLING KO')
-            self.chillerStatus.apply_style('background:red;')
+            if (status == '0' ):
+                self.chillerStatus.set_text('COOLING OK')
+                self.chillerStatus.apply_style('background:green;')
+            else:
+                self.chillerStatus.set_text('COOLING KO')
+                self.chillerStatus.apply_style('background:red;')
+            self._mutate_tempchiller(tbath)
+            self._mutate_chillerStat(status)
+            logging.info('CHILLER TBATH: '+tbath+' STATUS: '+status+' TSET:'+tset+' PUMP:'+pump)
 
-        logging.info('CHILLER TBATH: '+tbath+' STATUS: '+status+' TSET:'+tset+' PUMP:'+pump)
         asyncio.get_event_loop().call_later(10, self.refreshChiller)
+
+    def refreshThingSpeak(self):
+        if (self.initialised != 0):
+            params = {'field1': self.tempbench, 'field2': self.humbench, 'field3': self.tempchiller, 'field4': self.chillerStat, 'field5': self.tempext, 'field6': self.humext, 'key': thingspeak_key}
+            logThingSpeak(params)
+
+        asyncio.get_event_loop().call_later(60, self.refreshThingSpeak)
 
     @flx.action
     def hv_switch(self):
@@ -254,8 +344,8 @@ parser.add_option("-l","--log")
 parser.add_option("-p","--port")
 (options,args)=parser.parse_args()
 
-logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %H:%M:%S',filename=options.log,level=logging.DEBUG)
 flx.config.port = options.port
+logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %H:%M:%S',filename=options.log,level=logging.DEBUG)
 
 app = flx.App(SlowControlGUI)
 #app.launch('browser')  # show it now in a browser
