@@ -1,11 +1,17 @@
 from optparse import OptionParser
 parser = OptionParser()
 parser.add_option("-d","--days")
+parser.add_option("-s","--start")
+parser.add_option("-e","--end")
 parser.add_option("-o","--output")
 (options,args)=parser.parse_args()
 
 import urllib, json
-url = 'https://thingspeak.com/channels/781520/feed.json?days='+options.days
+if (options.start is None or options.end is None):
+    url = 'https://thingspeak.com/channels/781520/feed.json?days='+options.days
+else:
+    url = 'https://thingspeak.com/channels/781520/feed.json?start='+options.start+'&'+'end='+options.end
+
 response = urllib.urlopen(url)
 data = json.loads(response.read())
 
@@ -30,13 +36,16 @@ df.set_index('time', inplace=True) #set the index to the date column
 #df.index=df.index.tz_convert('Europe/Rome')
 
 #select only meaningful data
-df=df[df.index >= '2019-05-21']
+df=df[df.index >= '2019-05-10']
 
 #convert date to epoch
 df['timestamp']=df.index.astype('int64')/1000000000
 
 #removes unnecessary colums
 df=df.loc[:,'tbench':'timestamp']
+
+print df.head(5)
+print "......."
 print df.tail(5)
 
 from root_pandas import to_root
