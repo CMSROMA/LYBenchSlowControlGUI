@@ -42,20 +42,21 @@ class SerialConnection(flx.PyComponent):
     def init(self,port):
         self.con = serial.Serial(port,115200)
         self.con.timeout = 5
+
     def waitAnswer(self,response):
         reply = ''
-        while True:
-            x = self.con.readline().decode('UTF-8')
-            reply += x.strip()
-            if reply == response:
-                return reply
+        time.sleep(0.5)
+        #        while True:
+        x = self.con.readline().decode('UTF-8')
+        reply += x.strip()
+        if reply == response:
+            return reply
 
     def returnAnswer(self):
         reply = ''
-        while True:
-            x = self.con.readline().decode('UTF-8')
-            reply += x.strip()
-            return reply
+        x = self.con.readline().decode('UTF-8')
+        reply += x.strip()
+        return reply
 
     def sendCommand(self,command):
         if (command.lower()) == 'i' :
@@ -84,18 +85,19 @@ class SerialConnectionChiller(flx.PyComponent):
 
     def waitAnswer(self,response):
         reply = ''
-        while True:
-            x = self.con.readline().decode('UTF-8')
-            reply += x.strip()
-            if reply == response:
-                return reply
+  #      while True:
+        time.sleep(0.5)
+        x = self.con.readline().decode('UTF-8')
+        reply += x.strip()
+        if reply == response:
+            return reply
 
     def returnAnswer(self):
         reply = ''
-        while True:
-            x = self.con.readline().decode('UTF-8')
-            reply += x.strip()
-            return reply
+        #       while True:
+        x = self.con.readline().decode('UTF-8')
+        reply += x.strip()
+        return reply
 
     def sendCommand(self,command):
         if (command.lower()) == 't' :
@@ -114,6 +116,12 @@ class SerialConnectionChiller(flx.PyComponent):
             self.con.write('STATUS\r\n'.encode())
             time.sleep(0.5)
             return self.returnAnswer()
+        elif (command.lower()) == 'o' :
+            self.con.write('START\r\n'.encode())
+            return self.waitAnswer('OK')
+        elif (command.lower()) == 'k' :
+            self.con.write('STOP\r\n'.encode())
+            return self.waitAnswer('OK')
         else:
             return 'Command not supported'
 
@@ -124,18 +132,19 @@ class SerialConnectionSensirion(flx.PyComponent):
 
     def waitAnswer(self,response):
         reply = ''
-        while True:
-            x = self.con.readline().decode('UTF-8')
-            reply += x.strip()
-            if reply == response:
-                return reply
+        time.sleep(0.5)
+        #        while True:
+        x = self.con.readline().decode('UTF-8')
+        reply += x.strip()
+        if reply == response:
+            return reply
 
     def returnAnswer(self):
         reply = ''
-        while True:
-            x = self.con.readline().decode('UTF-8')
-            reply += x.strip()
-            return reply
+        #        while True:
+        x = self.con.readline().decode('UTF-8')
+        reply += x.strip()
+        return reply
 
     def sendCommand(self,command):
         if (command.lower()) == 't' :
@@ -163,25 +172,31 @@ class SlowControlGUI(flx.PyComponent):
     vsel = flx.IntProp(0, settable=True)
 
     chillerStat = flx.IntProp(0, settable=True)
+    chillerSwitch = flx.IntProp(0, settable=True)
     tempchiller = flx.FloatProp(0, settable=True)
     tempbench = flx.FloatProp(0, settable=True)
     tempext = flx.FloatProp(0, settable=True)
     humbench = flx.FloatProp(0, settable=True)
     humext = flx.FloatProp(0, settable=True)
 
-    sercon =  flx.ComponentProp()
-    serconChiller =  flx.ComponentProp()
-    serconSensirion =  flx.ComponentProp()
-    ledcon =  flx.ComponentProp()
+#    sercon =  flx.ComponentProp()
+#   serconChiller =  flx.ComponentProp()
+#    serconSensirion =  flx.ComponentProp()
+#    ledcon =  flx.ComponentProp()
 
     initialised = 0
 
     def init(self):
         super().init()
-        self._mutate_sercon(SerialConnection('/dev/ttyACM1'))
-        self._mutate_serconChiller(SerialConnectionChiller('/dev/ttyUSB0'))
-        self._mutate_serconSensirion(SerialConnectionSensirion('/dev/ttyACM0'))
-        self._mutate_ledcon(LedPulser())
+        #        self._mutate_sercon(SerialConnection('/dev/ttyACM1'))
+        self.sercon = SerialConnection('/dev/ttyACM1')
+        #        self._mutate_serconChiller(SerialConnectionChiller('/dev/ttyUSB0'))
+        self.serconChiller = SerialConnectionChiller('/dev/ttyUSB0')
+        #        self._mutate_serconSensirion(SerialConnectionSensirion('/dev/ttyACM0'))
+        self.serconSensirion = SerialConnectionSensirion('/dev/ttyACM0') 
+        #        self._mutate_ledcon(LedPulser())
+        self.ledcon = LedPulser() 
+
         self.t0 = datetime.now()
         #Always start in inhbit mode
         reply=self.sercon.sendCommand('i')
@@ -247,19 +262,28 @@ class SlowControlGUI(flx.PyComponent):
     def refreshChiller(self):
         if (self.initialised != 0):
             tbath=self.serconChiller.sendCommand('t')
+#            print(tbath)
             tset=self.serconChiller.sendCommand('g')
             pump=self.serconChiller.sendCommand('p')
             status=self.serconChiller.sendCommand('s')
             self.chillerText.set_text('CHILLER TBATH:'+tbath+' TSET:'+tset+' PUMP:'+pump)
 
-            if (status == '0' ):
+            if (pump== '000.00' and status == '0'):
+                self.chillerStatus.set_text('COOLING OFF')
+                self.chillerStatus.apply_style('background:yellow;')
+                self._mutate_chillerSwitch(0)
+            elif (status == '0' and pump== '003.00'):
                 self.chillerStatus.set_text('COOLING OK')
                 self.chillerStatus.apply_style('background:green;')
+                self._mutate_chillerStat(1)
+                self._mutate_chillerSwitch(1)
             else:
                 self.chillerStatus.set_text('COOLING KO')
                 self.chillerStatus.apply_style('background:red;')
+                self._mutate_chillerStat(0)
+
             self._mutate_tempchiller(tbath)
-            self._mutate_chillerStat(status)
+
             logging.info('CHILLER TBATH: '+tbath+' STATUS: '+status+' TSET:'+tset+' PUMP:'+pump)
 
         asyncio.get_event_loop().call_later(10, self.refreshChiller)
@@ -292,6 +316,17 @@ class SlowControlGUI(flx.PyComponent):
             ret=self.ledcon.ledSwitch(0)
             if (ret==0):
                 self._mutate_led(0)
+
+    @flx.action
+    def chiller_switch(self):
+        if (self.chillerSwitch==0):
+            reply=self.serconChiller.sendCommand('o')
+            if (reply=='OK'):
+                self._mutate_chillerSwitch(1)
+        elif (self.chillerSwitch==1):
+            reply=self.serconChiller.sendCommand('k')
+            if (reply=='OK'):
+                self._mutate_chillerSwitch(0)
         
     @flx.action
     def vsel_switch(self):
@@ -316,6 +351,10 @@ class SlowControlGUI(flx.PyComponent):
     def but3_clicked(self, *events):
         self.vsel_switch()
 
+    @flx.reaction('chillerStatus.pointer_click')
+    def chillerButton_clicked(self, *events):
+        self.chiller_switch()
+
 #    @flx.reaction
 #    def update_label(self, *events):
  
@@ -333,6 +372,15 @@ class SlowControlGUI(flx.PyComponent):
         if (self.led==0):
             self.but1.set_text('LED OFF')
             self.but1.apply_style('background:yellow;')
+        if (self.chillerSwitch==0):
+            self.chillerStatus.set_text('COOLING OFF')
+            self.chillerStatus.apply_style('background:yellow;')
+        if (self.chillerSwitch==1 and self.chillerStat==0):
+            self.chillerStatus.set_text('COOLING ON')
+            self.chillerStatus.apply_style('background:orange;')
+        if (self.chillerSwitch==1 and self.chillerStat==1):
+            self.chillerStatus.set_text('COOLING OK')
+            self.chillerStatus.apply_style('background:green;')
         if (self.vsel==1):
             self.but3.set_text('V1')
         if (self.vsel==0):
