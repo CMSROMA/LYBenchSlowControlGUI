@@ -40,8 +40,8 @@ import time
 
 class SerialConnection(flx.PyComponent):
     def init(self,port):
-        self.con = serial.Serial(port,115200)
-        self.con.timeout = 5
+        self.con = serial.Serial(port,115200,timeout=2)
+#        self.con.timeout = 5
 
     def waitAnswer(self,response):
         reply = ''
@@ -80,8 +80,8 @@ class SerialConnection(flx.PyComponent):
 
 class SerialConnectionChiller(flx.PyComponent):
     def init(self,port):
-        self.con = serial.Serial(port,9600)
-        self.con.timeout = 5
+        self.con = serial.Serial(port,9600,timeout=2)
+#        self.con.timeout = 5
 
     def waitAnswer(self,response):
         reply = ''
@@ -127,8 +127,8 @@ class SerialConnectionChiller(flx.PyComponent):
 
 class SerialConnectionSensirion(flx.PyComponent):
     def init(self,port):
-        self.con = serial.Serial(port,9600)
-        self.con.timeout = 5
+        self.con = serial.Serial(port,9600,timeout=2)
+#        self.con.timeout = 5
 
     def waitAnswer(self,response):
         reply = ''
@@ -189,11 +189,11 @@ class SlowControlGUI(flx.PyComponent):
     def init(self):
         super().init()
         #        self._mutate_sercon(SerialConnection('/dev/ttyACM1'))
-        self.sercon = SerialConnection('/dev/ttyACM1')
+        self.sercon = SerialConnection('/dev/sensor_0')
         #        self._mutate_serconChiller(SerialConnectionChiller('/dev/ttyUSB0'))
         self.serconChiller = SerialConnectionChiller('/dev/ttyUSB0')
         #        self._mutate_serconSensirion(SerialConnectionSensirion('/dev/ttyACM0'))
-        self.serconSensirion = SerialConnectionSensirion('/dev/ttyACM0') 
+        self.serconSensirion = SerialConnectionSensirion('/dev/sensor_1') 
         #        self._mutate_ledcon(LedPulser())
         self.ledcon = LedPulser() 
 
@@ -260,31 +260,35 @@ class SlowControlGUI(flx.PyComponent):
 
     @flx.action
     def refreshChiller(self):
-        if (self.initialised != 0):
-            tbath=self.serconChiller.sendCommand('t')
-#            print(tbath)
-            tset=self.serconChiller.sendCommand('g')
-            pump=self.serconChiller.sendCommand('p')
-            status=self.serconChiller.sendCommand('s')
-            self.chillerText.set_text('CHILLER TBATH:'+tbath+' TSET:'+tset+' PUMP:'+pump)
+        try:
+            if (self.initialised != 0):
+                tbath=self.serconChiller.sendCommand('t')
+                #            print(tbath)
+                tset=self.serconChiller.sendCommand('g')
+                pump=self.serconChiller.sendCommand('p')
+                status=self.serconChiller.sendCommand('s')
+                self.chillerText.set_text('CHILLER TBATH:'+tbath+' TSET:'+tset+' PUMP:'+pump)
 
-            if (pump== '000.00' and status == '0'):
-                self.chillerStatus.set_text('COOLING OFF')
-                self.chillerStatus.apply_style('background:yellow;')
-                self._mutate_chillerSwitch(0)
-            elif (status == '0' and pump== '003.00'):
-                self.chillerStatus.set_text('COOLING OK')
-                self.chillerStatus.apply_style('background:green;')
-                self._mutate_chillerStat(1)
-                self._mutate_chillerSwitch(1)
-            else:
-                self.chillerStatus.set_text('COOLING KO')
-                self.chillerStatus.apply_style('background:red;')
-                self._mutate_chillerStat(0)
+                if (pump== '000.00' and status == '0'):
+                    self.chillerStatus.set_text('COOLING OFF')
+                    self.chillerStatus.apply_style('background:yellow;')
+                    self._mutate_chillerSwitch(0)
+                elif (status == '0' and pump== '003.00'):
+                    self.chillerStatus.set_text('COOLING OK')
+                    self.chillerStatus.apply_style('background:green;')
+                    self._mutate_chillerStat(1)
+                    self._mutate_chillerSwitch(1)
+                else:
+                    self.chillerStatus.set_text('COOLING KO')
+                    self.chillerStatus.apply_style('background:red;')
+                    self._mutate_chillerStat(0)
 
-            self._mutate_tempchiller(tbath)
+                if not 'ERR' in tbath: 
+                    self._mutate_tempchiller(float(tbath))
 
-            logging.info('CHILLER TBATH: '+tbath+' STATUS: '+status+' TSET:'+tset+' PUMP:'+pump)
+                logging.info('CHILLER TBATH: '+tbath+' STATUS: '+status+' TSET:'+tset+' PUMP:'+pump)
+        except:
+                logging.info('Got an exception')
 
         asyncio.get_event_loop().call_later(10, self.refreshChiller)
 

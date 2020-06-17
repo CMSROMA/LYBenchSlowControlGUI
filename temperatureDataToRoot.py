@@ -8,9 +8,9 @@ parser.add_option("-o","--output")
 
 import urllib, json
 if (options.start is None or options.end is None):
-    url = 'https://thingspeak.com/channels/781520/feed.json?days='+options.days
+    url = 'https://thingspeak.com/channels/1083264/feed.json?days='+options.days
 else:
-    url = 'https://thingspeak.com/channels/781520/feed.json?start='+options.start+'&'+'end='+options.end
+    url = 'https://thingspeak.com/channels/1083264/feed.json?start='+options.start+'&'+'end='+options.end
 
 response = urllib.urlopen(url)
 data = json.loads(response.read())
@@ -23,11 +23,8 @@ df = pd.DataFrame.from_dict(data['feeds'])
 #manipulate DataFrame
 df['time']=pd.to_datetime(df['created_at'])
 df['tbench'] = df['field1'].astype(float)
-df['hbench'] = df['field2'].astype(float)
-df['tchiller'] = df['field3'].astype(float)
-df['chillerstatus'] = df['field4'].astype(float)
-df['tlab'] = df['field5'].astype(float)
-df['hlab'] = df['field6'].astype(float)
+df['hbench'] = df['field3'].astype(float)
+df['tlab'] = df['field2'].astype(float)
 
 df.set_index('time', inplace=True) #set the index to the date column
 
@@ -36,7 +33,7 @@ df.set_index('time', inplace=True) #set the index to the date column
 #df.index=df.index.tz_convert('Europe/Rome')
 
 #select only meaningful data
-df=df[df.index >= '2019-05-10']
+df=df[df.index >= '2020-06-17']
 
 #convert date to epoch
 df['timestamp']=df.index.astype('int64')/1000000000

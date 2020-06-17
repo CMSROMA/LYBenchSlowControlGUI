@@ -37,6 +37,7 @@ do
   esac
 done
 
+#source ~/H4AnalysisEnv.sh
 DATE=`date +%Y_%m_%d`
 filename="LYBenchTempData_"${DATE}".root"
 python2 ~/DAQ/LYBenchSlowControlGUI/temperatureDataToRoot.py -d ${days} -o ${outDir}/${filename}
